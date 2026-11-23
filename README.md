@@ -37,29 +37,27 @@ Executed locally on Windows 11 (`Python 3.13.7`, `pytest 9.2.0`) via `python -m 
 | **Null / Invalid URLs** | **0** | Must be `0` | Enforced by Pydantic v2 Grounding Gate + `HEAD` probes |
 
 ---
-
-## System Architecture
+## Architecture
 
 ```mermaid
 flowchart LR
-    subgraph ACQ["1. Async Acquisition Layer (src/scrapers/)"]
-        A1["Bulk Verticals (3,300+ rows)<br/>YC OSS · HF Spaces · HF Daily Papers + arXiv"]
-        A2["24h Freshness Crawlers<br/>5 AI RSS Feeds + 5 Job Board APIs"]
-        A3["Anti-Bot Layer<br/>curl_cffi TLS + Playwright Async"]
+    subgraph Acquisition
+        A1["Bulk APIs<br>YC · HF Spaces · arXiv"]
+        A2["24h Crawlers<br>5 AI News · 5 Job Boards"]
+        A3["Anti-Bot Layer<br>curl_cffi · Playwright"]
     end
 
-    subgraph ENR["2. Enrichment, LLM & Resolution"]
-        B1["Multi-Tier LLM Engine (src/llm/)<br/>413 Head+Tail Chunker (4k chars)<br/>Gemini 2.5 Flash → Groq Llama 3.3 → Tier 3<br/>429 Exponential Backoff + Jitter"]
-        B2["Entity & Date Engine<br/>55+ Seed Entities + RapidFuzz (>=88)<br/>UTC Normalizer + SQLite Seen-URL Ledger"]
+    subgraph Processing
+        B1["Multi-Tier LLM Engine<br>Gemini to Groq to Tier 3"]
+        B2["Entity & Date Resolver<br>Seed + RapidFuzz + SQLite"]
     end
 
-    subgraph GATE["3. Grounding Gate (src/schemas.py)"]
-        C1["Pydantic v2 Schema Validation<br/>Real HTTPS URL Enforcement<br/>Live GitHub GraphQL Stars (50/batch)<br/>HTTP HEAD Spot-Check"]
+    subgraph Validation
+        C1["Pydantic Grounding Gate<br>HTTPS Check + GH GraphQL"]
     end
 
-    subgraph OUT["4. Deliverables"]
-        D1["6 CSV Exports<br/>(data/exports/)"]
-        D2["Public Google Sheet<br/>(6 Tabs)"]
+    subgraph Output
+        D1["6 CSVs & Google Sheet"]
     end
 
     A1 --> B2
@@ -69,10 +67,13 @@ flowchart LR
     A3 --> B1
     B1 --> C1
     B2 --> C1
-    C1 --> D1 --> D2
+    C1 --> D1
 ```
 
----
+* **Bulk Acquisition (`src/scrapers/bulk_*.py`)**: Fetches 1,100 records each for startups, products, and papers concurrently using `httpx.AsyncClient`. Batches GitHub repositories (50 per GraphQL POST) to fetch live `stargazerCount` metrics without hitting REST rate limits.
+* **24-Hour Freshness (`src/scrapers/fresh_*.py`, `src/freshness/`)**: Normalizes relative and ISO/RFC timestamps to UTC, drops records older than 24 hours, and tracks dateless URLs in a SQLite `seen_urls` ledger.
+* **Resilient LLM Engine (`src/llm/`)**: Strips HTML boilerplate and truncates payloads to 4,000 characters (`chunker.py`) to prevent `413` errors. Cascades across **Gemini 2.5 Flash → Groq Llama 3.3 → Tier 3 fallback** (`orchestrator.py`) with exponential backoff and jitter on `429` responses.
+* **Entity Resolution & Anti-Bot (`src/resolution/`, `antibot_demo.py`)**: Normalizes legal suffixes (`Inc.`, `PBC`, `LLC`), matches against 55+ canonical AI startups plus `RapidFuzz` (`>= 88`), and demonstrates `curl_cffi` TLS impersonation alongside headless Playwright with asset blocking.
 
 ## How the Pipeline Works (Phase-by-Phase)
 
@@ -110,6 +111,7 @@ flowchart LR
 * Custom `@field_validator` rules reject empty URLs, non-HTTP(S) schemes, and placeholder domains (`example.com`, `localhost`), backed by asynchronous `HTTP HEAD` reachability checks during pipeline execution.
 
 ---
+
 
 ## Repository Structure
 
