@@ -1,0 +1,15 @@
+httpx
+aiohttp
+pydantic
+feedparser
+trafilatura
+dateparser
+rapidfuzz
+python-dotenv
+google-genai
+groq
+curl-cffi
+playwright
+pytest
+pytest-asyncio
+pandas
